@@ -1,4 +1,9 @@
 #include "extension.h"
+#include "httplib.h"
+#include <json/json.h>
+#include <locale>
+#include <codecvt>
+#include <string>
 
 bool ProcessSentence(std::wstring& sentence, SentenceInfo sentenceInfo);
 
@@ -13,21 +18,63 @@ bool ProcessSentence(std::wstring& sentence, SentenceInfo sentenceInfo);
 	This function may be run concurrently with itself: please make sure it's thread safe.
 	It will not be run concurrently with DllMain.
 */
+
+std::string WideStringToString(const std::wstring& text)
+{
+    std::vector<char> buffer((text.size() + 1) * 4);
+    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, buffer.data(), buffer.size(), nullptr, nullptr);
+    return buffer.data();
+}
+
 extern "C" __declspec(dllexport) wchar_t* OnNewSentence(wchar_t* sentence, const InfoForExtension* sentenceInfo)
 {
-	try
-	{
-		std::wstring sentenceCopy(sentence);
-		int oldSize = sentenceCopy.size();
-		if (ProcessSentence(sentenceCopy, SentenceInfo{ sentenceInfo }))
-		{
-			if (sentenceCopy.size() > oldSize) sentence = (wchar_t*)HeapReAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, sentence, (sentenceCopy.size() + 1) * sizeof(wchar_t));
-			wcscpy_s(sentence, sentenceCopy.size() + 1, sentenceCopy.c_str());
-		}
-	}
-	catch (SKIP)
-	{
-		*sentence = L'\0';
-	}
-	return sentence;
+    try
+    {
+        std::wstring sentenceCopy(sentence);
+        size_t oldSize = sentenceCopy.size();
+        if (ProcessSentence(sentenceCopy, SentenceInfo{ sentenceInfo }))
+        {
+            Json::Value data;
+            data["model"] = "qwen2:1.5b";
+            data["prompt"] = "Please translate the following content into Chinese! (Return to Chinese translation directly): " + WideStringToString(sentence);
+            data["stream"] = false;
+
+            Json::StreamWriterBuilder writer;
+            std::string json_data = Json::writeString(writer, data);
+
+            httplib::Client cli("http://localhost:11434");
+            auto res = cli.Post("/api/generate", json_data, "application/json");
+
+            if (res && res->status == 200)
+            {
+                Json::CharReaderBuilder reader;
+                Json::Value json_response;
+                std::istringstream s(res->body);
+                std::string errs;
+                if (Json::parseFromStream(reader, s, &json_response, &errs))
+                {
+                    std::string translated_text = json_response["response"].asString();
+
+                    std::wstring translated_sentence = std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(translated_text);
+
+                    if (translated_sentence.size() > oldSize)
+                    {
+                        sentence = (wchar_t*)HeapReAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, sentence, (translated_sentence.size() + 1) * sizeof(wchar_t));
+                    }
+                    wcscpy_s(sentence, translated_sentence.size() + 1, translated_sentence.c_str());
+                }
+            }
+            else
+            {
+                *sentence = L'\0';
+            }
+        }
+    }
+    catch (SKIP)
+    {
+        *sentence = L'\0';
+    }
+    return sentence;
 }
+
+
