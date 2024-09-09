@@ -28,7 +28,10 @@ BOOL WINAPI DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved
 */
 bool ProcessSentence(std::wstring& sentence, SentenceInfo sentenceInfo)
 {
-	return true;
+	if (sentenceInfo["current select"] && sentenceInfo["text number"]!=0) {
+		return true;
+	}
+	return false;
 //	// Your code here...
 //#ifdef COPY_CLIPBOARD
 //	// This example extension automatically copies sentences from the hook currently selected by the user into the clipboard.
