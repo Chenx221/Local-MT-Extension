@@ -14,6 +14,5 @@ After the sentence has been processed by all extensions, it will be displayed.
 `"void (*AddText)(int64_t number, const wchar_t* text)"`: similar to AddSentence, but doesn't treat the text like it's a full sentence.<br>
 `"DWORD (*GetSelectedProcessId)()"`: pointer to function that returns the process id currently selected in Textractor's top left dropdown.
 
-# Notes
 
 You just need Visual Studio with basic C++ support to compile this project.
